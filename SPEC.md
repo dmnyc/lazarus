@@ -2,11 +2,11 @@
 
 **Recovery of user data from relay history on Nostr**
 
-- **Version:** 0.3.0-draft
-- **Status:** DRAFT. Do not implement against this document yet.
+- **Version:** 0.4.0-draft
+- **Status:** DRAFT. Expect changes before 1.0; implementations should track the changelog.
 - **Author:** @dmnyc
 - **Licensing:** TBD (suggest CC0 for the spec, MIT for the reference library)
-- **Home:** to be extracted to its own repository; this draft lives beside the Nostr Valley talk that spawned it.
+- **Home:** https://github.com/dmnyc/lazarus
 
 ## Abstract
 
@@ -89,28 +89,67 @@ encryption keys. Clients will encrypt direct messages to them again." versus
 
 ### Scan
 
-1. Collect relay set: the user's own relay list (kind 10002 write relays),
-   a configurable default set, and a configurable archival set. The relay
-   sets are configuration, not protocol; two implementations with different
-   archival sets will see different histories and both are conformant.
+1. Collect relay set: every relay in the user's own relay list (kind
+   10002, read and write, not only the first few outbox relays), a
+   configurable default set, and a configurable archival set. A user's
+   own relays usually keep only the latest version of a replaceable
+   event, so a scan limited to them misses most of the history. The relay
+   sets are configuration, not protocol; two implementations with
+   different archival sets will see different histories and both are
+   conformant.
 2. For each relay, request `kinds: [K], authors: [pubkey]` with a per-relay
    timeout (reference: 6000 ms) and a limit of at least 50. Implementations
    MUST NOT treat a partial relay response as a complete history.
-3. Deduplicate by event id. Preserve `found_on` relay lists per candidate
+3. A relay that returns a full page may hold older versions.
+   Implementations SHOULD let the user page further back from those
+   relays on request, with `until` set to the oldest `created_at` that
+   relay returned. `until` is inclusive, so the next page repeats that
+   event; a relay whose next page brings nothing older is exhausted.
+4. Deduplicate by event id. Preserve `found_on` relay lists per candidate
    and report which relays answered.
+
+Informative: `wss://hist.nostr.land` and `wss://relay.ditto.pub` were
+observed keeping full replaceable history (hundreds of versions of one
+follow list) in 2026-09. Large public relays often still hold versions the
+user's own relays already replaced.
 
 ### Rank
 
-Ranking is a **per-kind profile** (see the registry). The reference profile
-for countable list kinds (3, 10000, 10003):
+Ranking is a **per-kind profile** (see the registry). Candidates are
+listed newest first by default. For countable list kinds (3, 10000,
+10003, 10006), implementations MAY also offer a size order: item count
+descending, newer first on ties. Empty candidates are always shown
+(invariant 2) and never recommended (invariant 3).
 
-- Primary: item count, descending.
-- Tiebreak: `created_at`, descending (newer wins).
-- Empty candidates sort last and are never recommended.
-- Recommend the highest-ranked candidate that is strictly better than
-  current by the same profile. If none is, "no recoverable improvement
-  found" is the correct answer and MUST be presented as a normal result,
-  not an error.
+The `count` profile does not recommend a version just because it is
+bigger: lists shrink through normal curation. It recommends one only when
+the current version looks clobbered:
+
+- A step between two consecutive versions (by `created_at`) is a
+  **sudden drop** when the later version is missing at least 20% of the
+  earlier version's items and at least 5 items, or is empty while the
+  earlier one is not. Curation moves a few items at a time and never
+  registers as a drop, however far a list shrinks over time.
+- Walking back from the newest version, find the most recent sudden drop
+  the current version hasn't recovered from: the current version is still
+  missing at least 20%, and at least 5 items, of the version from just
+  before the drop.
+- Drops back to back, or within 24 hours of each other, form one
+  **clobber episode**. Recommend the fullest version from just before any
+  drop in that episode, so a list that was clobbered, partly restored, and
+  clobbered again points at its fullest state before the damage.
+- Sizes are compared conservatively: a drop uses the later version's
+  maximum and the earlier version's minimum (see Private items), and
+  nothing is recommended while the current version's size is unknown.
+- If no drop qualifies, "no recoverable improvement found" is the correct
+  answer and MUST be presented as a normal result, not an error.
+
+The thresholds (20%, 5 items, 24 hours) are reference values.
+Implementations SHOULD use them, so that recommendations agree across
+clients.
+
+`recency` kinds are listed newest first with no recommendation: the user
+picks.
 
 For `meaningful-empty` kinds, ranking is FORBIDDEN: there is no "better"
 without knowing user intent. All candidates are offered equally, each with
@@ -153,8 +192,10 @@ carry private items is not conformant for that kind.
 
 Publishing is: take the chosen candidate's item set verbatim (tags, and
 encrypted content if present and decryptable), construct a fresh event of
-the same kind, sign with the user's own signer, publish to the widest
-sensible relay set (the same set used for scanning, at minimum). Widening
+the same kind, sign with the user's own signer, and publish to the user's
+write relays plus every relay that answered the scan, at minimum. The
+relays that answered hold the user's history, so that is where the
+recovered version must land to replace the one being undone. Widening
 publication is encouraged: the recovery only sticks where it lands.
 
 ## Kind registry
@@ -165,14 +206,14 @@ listed is out of scope until this document is amended.
 
 | Kind | Name | Tier | Ranking profile | Notes |
 |---|---|---|---|---|
-| 3 | Follow list (NIP-02) | 1 | count, then recency | The reference implementation. `p` tags; `content` may hold relay hints, preserve verbatim. |
-| 10000 | Mute list (NIP-51) | 1 | count, then recency | Private items apply. Delta rule applies with re-mute warning. |
+| 3 | Follow list (NIP-02) | 1 | count: clobber detection | The reference implementation. `p` tags; `content` may hold relay hints, preserve verbatim. |
+| 10000 | Mute list (NIP-51) | 1 | count: clobber detection | Private items apply. Delta rule applies with re-mute warning. |
 | 0 | Profile metadata (NIP-01) | 2 | recency, user picks | Size ranking is meaningless here; profiles change legitimately and often. Show field-level diffs between candidates and current (name, picture, nip05, about). Highest rogue-client casualty rate. |
-| 10003 | Bookmarks (NIP-51) | 2 | count, then recency | Private items apply. `e` and `a` tags. High user pain, zero effect on others. |
+| 10003 | Bookmarks (NIP-51) | 2 | count: clobber detection | Private items apply. `e` and `a` tags. High user pain, zero effect on others. |
 | 10044 | Encryption key list (NIP-4e, draft) | 2 | none: intent confirmation required (`meaningful-empty`) | Empty = "I no longer use NIP-4e" is a defined state, not damage (invariant 3 exception). Recovery or re-emptying MUST be preceded by an explicit intent question. Auto-repairing this kind is a conformance violation even for clients that implement NIP-4e. Display: show the `p`-tagged encryption pubkeys per candidate. |
 | 10002 | Relay list (NIP-65) | 3 | recency, user picks | Mandatory staleness warning: an old relay list can strand the user on dead relays and silently break event delivery. Implementations SHOULD liveness-check candidate relays before recommending. |
 | 10050 | DM relay inbox (NIP-17) | 3 | recency, user picks | Same staleness warning as 10002; a wrong inbox list silently breaks DM delivery. |
-| 10006 | Blocked relays (NIP-51) | 3 | count, then recency | Low stakes. |
+| 10006 | Blocked relays (NIP-51) | 3 | count: clobber detection | Low stakes. |
 
 ### Why not the rest
 
@@ -225,7 +266,10 @@ A conformant client screen:
 
 - Lives in settings; scans only on user action.
 - Renders all candidates with their timestamps, item counts (or
-  partially-counted markers), and found-on relays.
+  partially-counted markers), and found-on relays, newest first by
+  default, with the recommended candidate highlighted so a long history
+  can't bury it.
+- Offers a way to page further back when a relay filled a page.
 - Shows the computed delta before any publish click, with the
   direction-of-harm warning for kinds that affect other people.
 - Renders `meaningful-empty` kinds with the intent question and never
@@ -250,9 +294,9 @@ A client or library is **Lazarus-compatible** if and only if:
 
 1. It honors the four invariants and the delta rule.
 2. It passes the shared test vectors for every Tier 1 kind it supports
-   (scan/dedupe fixtures, ranking fixtures including tombstone,
-   meaningful-empty, partially-counted, and private-item-estimate cases,
-   delta computation fixtures).
+   (scan/dedupe and paging fixtures, ranking fixtures including tombstone,
+   meaningful-empty, partially-counted, private-item-estimate, gradual
+   curation, and clobber-episode cases, delta computation fixtures).
 3. It reports its relay configuration alongside recovery results, so a
    "nothing found" answer can be judged against the relays that were asked.
 
@@ -266,10 +310,10 @@ prevent.
 The reference implementation (extracted from Mutable, where the core
 survived React, Vue, and Svelte ports, and hardened in production in
 the Jumble client, whose port contributed the private-items estimate
-tier) performs: scan the relay set with per-relay timeouts, dedupe by
-event id, rank by the kind profile, render all candidates with deltas,
-recommend per the profile, publish on explicit click through the
-user's signer, republish widely.
+tier and clobber detection) performs: scan the relay set with per-relay
+timeouts, page back on request, dedupe by event id, rank by the kind
+profile, render all candidates with deltas, recommend per the profile,
+publish on explicit click through the user's signer, republish widely.
 
 ## Non-goals
 
@@ -297,6 +341,15 @@ user's signer, republish widely.
 
 ## Changelog
 
+- 0.4.0-draft: recommendations rewritten as clobber detection after
+  implementation review. A bigger older version is no reason to restore,
+  since lists shrink through curation, so the `count` profile now
+  recommends only after a sudden drop the current version hasn't
+  recovered from, with drops within a day grouped into one episode.
+  Candidates list newest first, with an optional size order. The scan
+  covers the user's read relays too and pages back on request, since
+  archival relays keep hundreds of versions. The publish minimum is the
+  user's write relays plus every relay that answered the scan.
 - 0.3.0-draft: private-items contract rewritten as three certainties
   (exact / estimated / flagged) after implementation review: private-only
   lists are common, public counts alone read a full list and an emptied

@@ -34,11 +34,17 @@ block bounds) when it can't be decrypted, **flagged** when neither applies.
 Ranking compares total ranges, so a private-only list that was emptied never
 reads as a zero.
 
+Recommendations follow clobbers, not size. Lists shrink through normal
+curation, so a version is only recommended after a sudden drop (a fifth of
+the list at once) that the current version hasn't recovered from, and then
+it's the fullest version from before the damage.
+
 ## Implementations
 
 | Client | Status | Links |
 |---|---|---|
-| Jumble (fork) | Shipped — reference implementation | [Live deployment](https://jumble.dmnyc.net) · [dmnyc/jumble-spark](https://github.com/dmnyc/jumble-spark), branch `feat/lazarus-data-recovery` |
+| Jumble (fork) | Shipped — reference implementation | [Live deployment](https://jumble.dmnyc.net) · [dmnyc/jumble-spark](https://github.com/dmnyc/jumble-spark), branch `feat/lazarus-data-recovery-v2` |
+| Jank (fork) | Ported, PR pending | [dmnyc/jank](https://github.com/dmnyc/jank), branch `feat/lazarus-data-recovery` |
 
 Origins: the core survived React, Vue, and Svelte ports in
 [Mutable](https://github.com/dmnyc/mutable); the list-recovery concept first
@@ -46,6 +52,6 @@ shipped in [Plebs vs Zombies](https://github.com/dmnyc/plebs-vs-zombies).
 
 ## Status
 
-Spec **0.3.0-draft**. Do not implement against it yet. See
-[SPEC.md](SPEC.md) for the full document: per-kind registry, delta rule,
-meaningful-empty, client integration contracts, conformance vectors.
+Spec **0.4.0-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
+the full document: per-kind registry, delta rule, meaningful-empty,
+recommendation rules, client integration contracts, conformance vectors.
