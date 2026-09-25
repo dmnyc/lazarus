@@ -55,17 +55,21 @@ of them breaks.
    precisely why recovery must never be automatic: an auto-repair racing an
    auto-write is two clients fighting over the user's account.
 2. **Everything found is shown.** Every candidate, including empty ones and
-   candidates older or smaller than current. The user may always choose any
-   version they are shown. Hiding candidates to make the recommendation look
-   better is a conformance failure. Runs of versions between notable ones
-   (the current and recommended versions, empty ones, and both sides of a
-   sudden drop) MAY be folded into collapsed groups, as long as every
-   version stays one action away.
+   candidates older or smaller than current. Hiding candidates to make the
+   recommendation look better is a conformance failure. Runs of versions
+   between notable ones (the current and recommended versions, empty ones,
+   and both sides of a sudden drop) MAY be folded into collapsed groups,
+   and past empty versions MAY be hidden until the user asks for them, as
+   long as every version stays one action away. The user may choose any
+   version they are shown, except a past empty version (see invariant 3).
 3. **Tombstones are never recommended.** An empty version of the list is
-   displayed (it is evidence, often the fingerprint of the clobbering
-   client), but it MUST NOT be the recommended candidate. **Exception:** for
-   kinds flagged `meaningful-empty` (see registry), an empty candidate is a
-   valid option that MUST be presented with its defined meaning, MUST NOT be
+   evidence, often the fingerprint of the clobbering client. It MUST NOT be
+   the recommended candidate, and a past one (anything but current) SHOULD
+   NOT be offered for restore at all, so a clobbered state can't be put
+   back by accident. An empty current version is shown as it is: it is
+   usually the clobber itself. **Exception:** for kinds flagged
+   `meaningful-empty` (see registry), an empty candidate is a valid option
+   that MUST be presented with its defined meaning, MUST NOT be
    auto-selected, and MUST NOT be labeled as damage.
 4. **Publishing requires an explicit user click** that names what will be
    published, signed by the user's own signer (NIP-07, NIP-46, or
@@ -271,8 +275,8 @@ A conformant client screen:
 - Renders all candidates with their timestamps, item counts (or
   partially-counted markers), and found-on relays, newest first by
   default, with the recommended candidate highlighted so a long history
-  can't bury it. Runs of small edits MAY be folded into expandable groups
-  (see invariant 2).
+  can't bury it. Runs of small edits MAY be folded into expandable groups,
+  and past empty versions hidden until requested (see invariants 2 and 3).
 - Offers a way to page further back when a relay filled a page.
 - Shows the computed delta before any publish click, with the
   direction-of-harm warning for kinds that affect other people.
@@ -370,6 +374,8 @@ publish on explicit click through the user's signer, republish widely.
   contract lets runs of small edits fold into expandable groups, decrypts
   only what is shown, and adds remote-signer guidance: mark versions too
   large for NIP-46 up front, and decrypt grouped versions only on review.
+  Past empty versions may be hidden until requested, and are not offered
+  for restore.
 - 0.3.0-draft: private-items contract rewritten as three certainties
   (exact / estimated / flagged) after implementation review: private-only
   lists are common, public counts alone read a full list and an emptied
