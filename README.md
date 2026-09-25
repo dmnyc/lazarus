@@ -59,15 +59,12 @@ account's history relay was listed for reading only), the client's default
 relays, and these found 51 versions of the follow list on the first page,
 and 439 after paging back.
 
-The reference implementations scan this archival set on top of the user's
-relays: `hist.nostr.land`, `relay.ditto.pub`, `nos.lol`, `nostr.mom`,
-`purplepag.es`, `nostr.bitcoiner.social`, `relay.primal.net`,
-`relay.snort.social`, `relay.nostr.net`, `nostr21.com`,
-`theforest.nostr1.com`, `nostr-pub.wellorder.net`, `relay.noswhere.com`,
-`relay.nostrplebs.com`, `nostrelites.org`, `nostr.land`, `eden.nostr.land`,
-`nostr.wine`. Which relays keep history changes over time, so treat the list
-as a starting point: relay sets are configuration, not protocol (see
-[SPEC.md](SPEC.md)).
+The reference implementations scan these six on top of the user's relays,
+kept to relays observed holding history since every relay is another
+connection: `relay.ditto.pub`, `hist.nostr.land`, `nos.lol`, `nostr.mom`,
+`purplepag.es`, `nostr.bitcoiner.social`. Which relays keep history changes
+over time, so treat the list as a starting point: relay sets are
+configuration, not protocol (see [SPEC.md](SPEC.md)).
 
 ## Implementations
 
@@ -82,6 +79,6 @@ shipped in [Plebs vs Zombies](https://github.com/dmnyc/plebs-vs-zombies).
 
 ## Status
 
-Spec **0.4.0-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
+Spec **0.5.0-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
 the full document: per-kind registry, delta rule, meaningful-empty,
 recommendation rules, client integration contracts, conformance vectors.

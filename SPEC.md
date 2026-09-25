@@ -2,7 +2,7 @@
 
 **Recovery of user data from relay history on Nostr**
 
-- **Version:** 0.4.0-draft
+- **Version:** 0.5.0-draft
 - **Status:** DRAFT. Expect changes before 1.0; implementations should track the changelog.
 - **Author:** @dmnyc
 - **Licensing:** TBD (suggest CC0 for the spec, MIT for the reference library)
@@ -86,6 +86,13 @@ accounts the user may have deliberately unmuted since; that is a moderation
 action taken on the user's behalf and MUST be flagged as such. A recovery
 that shrinks the list below current MUST require a separate confirmation
 from one that grows it.
+
+Items compare by type and value (`tag[0]` and `tag[1]`): a relay hint or
+petname a client rewrote is not a change, or an identical follow list would
+read as hundreds of follows added and removed. On relay lists the
+read/write marker is part of the item, since it changes what the relay is
+for. Profiles (kind 0) keep their data in `content`, so their delta is the
+list of fields that would change.
 
 For `meaningful-empty` kinds, the delta MUST additionally state the meaning
 of both endpoints. Example for kind 10044: "This restores your NIP-4e
@@ -203,11 +210,27 @@ carry private items is not conformant for that kind.
 
 Publishing is: take the chosen candidate's item set verbatim (tags, and
 encrypted content if present and decryptable), construct a fresh event of
-the same kind, sign with the user's own signer, and publish to the user's
-write relays plus every relay that answered the scan, at minimum. The
-relays that answered hold the user's history, so that is where the
-recovered version must land to replace the one being undone. Widening
-publication is encouraged: the recovery only sticks where it lands.
+the same kind, sign with the user's own signer, and publish.
+
+- Immediately before signing, implementations MUST re-read the current
+  version, from their local copy and the user's write relays. If it changed
+  since the review (an edit from another view, device or client), recompute
+  the delta and ask again: restoring over it would silently drop those
+  edits.
+- The recovered event's `created_at` MUST be later than the version it
+  replaces: `max(now, current.created_at + 1)`. Clobbering clients often
+  have skewed clocks, and an older timestamp loses to the clobbered version
+  on relays and in caches.
+- The signing account MUST be the list's author. A client with several
+  accounts MUST NOT restore one account's list as another's, including when
+  the active account changes during a signer approval.
+- Success is judged on the user's write relays. The recovered version
+  SHOULD also go to every other relay that answered the scan, as a best
+  effort that doesn't affect the result: those relays hold older copies and
+  keep serving the clobbered one otherwise.
+- Implementations MUST update their own local copy of the list with the
+  recovered version. Otherwise the client's next edit rebuilds from the
+  clobbered copy and clobbers the list again.
 
 ## Kind registry
 
@@ -288,6 +311,8 @@ A conformant client screen:
 - Renders `meaningful-empty` kinds with the intent question and never
   pre-selects an option.
 - Uses the signer for exactly one event per click.
+- Offers restore only to accounts that can sign: a view-only account can
+  scan its history but not restore it.
 
 Decrypting private items can mean a signer prompt per version, so
 implementations SHOULD decrypt up front only the versions shown on their
@@ -367,6 +392,14 @@ publish on explicit click through the user's signer, republish widely.
 
 ## Changelog
 
+- 0.5.0-draft: restore safety, after review of a second implementation.
+  Re-read the current version before signing and ask again if it changed,
+  date the recovered event after the version it replaces, restore only as
+  the list's author, judge publish success on the user's write relays with
+  the other answering relays as best effort, and update the client's own
+  copy after publishing. Deltas compare items by type and value, and
+  profiles show the fields that change. The archival set in the README is
+  trimmed to relays observed holding history.
 - 0.4.0-draft: recommendations rewritten as clobber detection after
   implementation review. A bigger older version is no reason to restore,
   since lists shrink through curation, so the `count` profile now
