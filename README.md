@@ -37,14 +37,44 @@ reads as a zero.
 Recommendations follow clobbers, not size. Lists shrink through normal
 curation, so a version is only recommended after a sudden drop (a fifth of
 the list at once) that the current version hasn't recovered from, and then
-it's the fullest version from before the damage.
+it's the fullest version from before the damage. A clobber the list has
+since been edited on for a week is settled, and nothing is recommended.
+
+## Where the history lives
+
+Most relays keep only the latest version of a replaceable event, so a
+user's own relays usually hold just the current list: for one account, its
+first five outbox relays had a single version of the follow list. The
+history survives on relays that keep old versions. Observed in September
+2026:
+
+| Relay | What it keeps |
+|---|---|
+| `wss://relay.ditto.pub` | Every version: hundreds of that follow list, going back 14 months |
+| `wss://hist.nostr.land` | Recent history: 20 versions of that follow list from the past few weeks |
+| `wss://nos.lol`, `wss://nostr.mom`, `wss://purplepag.es`, `wss://nostr.bitcoiner.social` | Often a version or two that the user's own relays already replaced, including a clobbered, empty follow list |
+
+Scanning every relay in the user's relay list (read and write: that
+account's history relay was listed for reading only), the client's default
+relays, and these found 51 versions of the follow list on the first page,
+and 439 after paging back.
+
+The reference implementations scan this archival set on top of the user's
+relays: `hist.nostr.land`, `relay.ditto.pub`, `nos.lol`, `nostr.mom`,
+`purplepag.es`, `nostr.bitcoiner.social`, `relay.primal.net`,
+`relay.snort.social`, `relay.nostr.net`, `nostr21.com`,
+`theforest.nostr1.com`, `nostr-pub.wellorder.net`, `relay.noswhere.com`,
+`relay.nostrplebs.com`, `nostrelites.org`, `nostr.land`, `eden.nostr.land`,
+`nostr.wine`. Which relays keep history changes over time, so treat the list
+as a starting point: relay sets are configuration, not protocol (see
+[SPEC.md](SPEC.md)).
 
 ## Implementations
 
 | Client | Status | Links |
 |---|---|---|
 | Jumble (fork) | Shipped — reference implementation | [Live deployment](https://jumble.dmnyc.net) · [dmnyc/jumble-spark](https://github.com/dmnyc/jumble-spark), branch `feat/lazarus-data-recovery-v2` |
-| Jank (fork) | Ported, PR pending | [dmnyc/jank](https://github.com/dmnyc/jank), branch `feat/lazarus-data-recovery` |
+| Jank (fork) | PR open | [DocNR/jank#22](https://github.com/DocNR/jank/pull/22) · [dmnyc/jank](https://github.com/dmnyc/jank), branch `feat/lazarus-data-recovery` |
 
 Origins: the core survived React, Vue, and Svelte ports in
 [Mutable](https://github.com/dmnyc/mutable); the list-recovery concept first
