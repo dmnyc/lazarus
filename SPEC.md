@@ -56,11 +56,11 @@ of them breaks.
    auto-write is two clients fighting over the user's account.
 2. **Everything found is shown.** Every candidate, including empty ones and
    candidates older or smaller than current. Hiding candidates to make the
-   recommendation look better is a conformance failure. Runs of versions
-   between notable ones (the current and recommended versions, empty ones,
-   and both sides of a sudden drop) MAY be folded into collapsed groups,
-   and past empty versions MAY be hidden until the user asks for them, as
-   long as every version stays one action away. The user may choose any
+   recommendation look better is a conformance failure. Versions MAY be
+   folded into collapsed groups (runs of small edits, and clobber episodes,
+   marked as such), and past empty versions MAY be hidden until the user
+   asks for them, as long as every version stays one action away and the
+   current and recommended versions stay visible. The user may choose any
    version they are shown, except a past empty version (see invariant 3).
 3. **Tombstones are never recommended.** An empty version of the list is
    evidence, often the fingerprint of the clobbering client. It MUST NOT be
@@ -145,13 +145,17 @@ the current version looks clobbered:
   **clobber episode**. Recommend the fullest version from just before any
   drop in that episode, so a list that was clobbered, partly restored, and
   clobbered again points at its fullest state before the damage.
+- A clobber the list has since been edited on at least 5 times, over at
+  least a week, is **settled**: the current version is the user's choice,
+  and nothing is recommended.
 - Sizes are compared conservatively: a drop uses the later version's
   maximum and the earlier version's minimum (see Private items), and
   nothing is recommended while the current version's size is unknown.
 - If no drop qualifies, "no recoverable improvement found" is the correct
   answer and MUST be presented as a normal result, not an error.
 
-The thresholds (20%, 5 items, 24 hours) are reference values.
+The thresholds (20%, 5 items, 24 hours, 5 edits over a week) are reference
+values.
 Implementations SHOULD use them, so that recommendations agree across
 clients.
 
@@ -275,8 +279,9 @@ A conformant client screen:
 - Renders all candidates with their timestamps, item counts (or
   partially-counted markers), and found-on relays, newest first by
   default, with the recommended candidate highlighted so a long history
-  can't bury it. Runs of small edits MAY be folded into expandable groups,
-  and past empty versions hidden until requested (see invariants 2 and 3).
+  can't bury it. Runs of small edits and clobber episodes MAY be folded
+  into expandable groups, with episodes marked, and past empty versions
+  hidden until requested (see invariants 2 and 3).
 - Offers a way to page further back when a relay filled a page.
 - Shows the computed delta before any publish click, with the
   direction-of-harm warning for kinds that affect other people.
@@ -366,12 +371,14 @@ publish on explicit click through the user's signer, republish widely.
   implementation review. A bigger older version is no reason to restore,
   since lists shrink through curation, so the `count` profile now
   recommends only after a sudden drop the current version hasn't
-  recovered from, with drops within a day grouped into one episode.
+  recovered from, with drops within a day grouped into one episode, and
+  not once the list has been edited on for a week since.
   Candidates list newest first, with an optional size order. The scan
   covers the user's read relays too and pages back on request, since
   archival relays keep hundreds of versions. The publish minimum is the
   user's write relays plus every relay that answered the scan. The UI
-  contract lets runs of small edits fold into expandable groups, decrypts
+  contract lets runs of small edits and clobber episodes fold into
+  expandable groups, decrypts
   only what is shown, and adds remote-signer guidance: mark versions too
   large for NIP-46 up front, and decrypt grouped versions only on review.
   Past empty versions may be hidden until requested, and are not offered
