@@ -72,6 +72,7 @@ configuration, not protocol (see [SPEC.md](SPEC.md)).
 |---|---|---|
 | Jumble (fork) | Shipped — reference implementation | [Live deployment](https://jumble.dmnyc.net) · [dmnyc/jumble-spark](https://github.com/dmnyc/jumble-spark), branch `feat/lazarus-data-recovery-v2` |
 | Jank (fork) | PR open | [DocNR/jank#22](https://github.com/DocNR/jank/pull/22) · [dmnyc/jank](https://github.com/dmnyc/jank), branch `feat/lazarus-data-recovery` |
+| zap.cooking | PR open | [zapcooking/frontend#753](https://github.com/zapcooking/frontend/pull/753) |
 
 Origins: the core survived React, Vue, and Svelte ports in
 [Mutable](https://github.com/dmnyc/mutable); the list-recovery concept first
