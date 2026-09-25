@@ -276,6 +276,14 @@ A conformant client screen:
   pre-selects an option.
 - Uses the signer for exactly one event per click.
 
+Remote signers (NIP-46) receive every request NIP-44 encrypted, which caps
+a request at 65,535 bytes: a follow list of roughly 850 accounts, or a mute
+list with hundreds of private items, can't be decrypted or signed through
+one. On a remote signer, implementations SHOULD mark versions too large to
+restore in the list itself, not only at the publish step, and SHOULD keep
+signer requests proportionate: decrypt private items up front for the
+first page only, and older versions when the user reviews them.
+
 Minimum viable integration is a list, a delta line, and one button per
 candidate. Clients MAY go further (field diffs for kind 0, relay liveness
 checks for kind 10002) per the registry's per-kind notes.
@@ -349,7 +357,9 @@ publish on explicit click through the user's signer, republish widely.
   Candidates list newest first, with an optional size order. The scan
   covers the user's read relays too and pages back on request, since
   archival relays keep hundreds of versions. The publish minimum is the
-  user's write relays plus every relay that answered the scan.
+  user's write relays plus every relay that answered the scan. The UI
+  contract adds remote-signer guidance: mark versions too large for
+  NIP-46 up front, and decrypt beyond the first page only on review.
 - 0.3.0-draft: private-items contract rewritten as three certainties
   (exact / estimated / flagged) after implementation review: private-only
   lists are common, public counts alone read a full list and an emptied
