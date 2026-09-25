@@ -57,7 +57,10 @@ of them breaks.
 2. **Everything found is shown.** Every candidate, including empty ones and
    candidates older or smaller than current. The user may always choose any
    version they are shown. Hiding candidates to make the recommendation look
-   better is a conformance failure.
+   better is a conformance failure. Runs of versions between notable ones
+   (the current and recommended versions, empty ones, and both sides of a
+   sudden drop) MAY be folded into collapsed groups, as long as every
+   version stays one action away.
 3. **Tombstones are never recommended.** An empty version of the list is
    displayed (it is evidence, often the fingerprint of the clobbering
    client), but it MUST NOT be the recommended candidate. **Exception:** for
@@ -268,7 +271,8 @@ A conformant client screen:
 - Renders all candidates with their timestamps, item counts (or
   partially-counted markers), and found-on relays, newest first by
   default, with the recommended candidate highlighted so a long history
-  can't bury it.
+  can't bury it. Runs of small edits MAY be folded into expandable groups
+  (see invariant 2).
 - Offers a way to page further back when a relay filled a page.
 - Shows the computed delta before any publish click, with the
   direction-of-harm warning for kinds that affect other people.
@@ -276,13 +280,18 @@ A conformant client screen:
   pre-selects an option.
 - Uses the signer for exactly one event per click.
 
+Decrypting private items can mean a signer prompt per version, so
+implementations SHOULD decrypt up front only the versions shown on their
+own rows, and grouped versions when the user expands their group or
+reviews one.
+
 Remote signers (NIP-46) receive every request NIP-44 encrypted, which caps
 a request at 65,535 bytes: a follow list of roughly 850 accounts, or a mute
 list with hundreds of private items, can't be decrypted or signed through
 one. On a remote signer, implementations SHOULD mark versions too large to
-restore in the list itself, not only at the publish step, and SHOULD keep
-signer requests proportionate: decrypt private items up front for the
-first page only, and older versions when the user reviews them.
+restore in the list itself, not only at the publish step, and SHOULD
+decrypt grouped versions only when the user reviews one, since every
+decryption is a signer request.
 
 Minimum viable integration is a list, a delta line, and one button per
 candidate. Clients MAY go further (field diffs for kind 0, relay liveness
@@ -358,8 +367,9 @@ publish on explicit click through the user's signer, republish widely.
   covers the user's read relays too and pages back on request, since
   archival relays keep hundreds of versions. The publish minimum is the
   user's write relays plus every relay that answered the scan. The UI
-  contract adds remote-signer guidance: mark versions too large for
-  NIP-46 up front, and decrypt beyond the first page only on review.
+  contract lets runs of small edits fold into expandable groups, decrypts
+  only what is shown, and adds remote-signer guidance: mark versions too
+  large for NIP-46 up front, and decrypt grouped versions only on review.
 - 0.3.0-draft: private-items contract rewritten as three certainties
   (exact / estimated / flagged) after implementation review: private-only
   lists are common, public counts alone read a full list and an emptied
