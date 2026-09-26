@@ -70,9 +70,10 @@ configuration, not protocol (see [SPEC.md](SPEC.md)).
 
 | Client | Spec | Status | Links |
 |---|---|---|---|
-| Jumble (fork) | 0.6.0 | Shipped — reference implementation | [Live deployment](https://jumble.dmnyc.net) · [dmnyc/jumble-spark](https://github.com/dmnyc/jumble-spark), branch `feat/lazarus-data-recovery-v2` |
-| zap.cooking | 0.6.0 | Merged | [zapcooking/frontend#753](https://github.com/zapcooking/frontend/pull/753) |
-| Jank (fork) | 0.5.0 | Merged in v26.16.0; the 0.6.0 update is in review | [DocNR/jank#22](https://github.com/DocNR/jank/pull/22) · [DocNR/jank#24](https://github.com/DocNR/jank/pull/24) |
+| Jumble (fork) | 0.6.1 | Shipped — reference implementation | [Live deployment](https://jumble.dmnyc.net) · [dmnyc/jumble-spark](https://github.com/dmnyc/jumble-spark), branch `feat/lazarus-data-recovery-v2` |
+| Mutable | 0.6.1 | Shipped in v1.9.0; a follow-up is in review | [dmnyc/mutable#49](https://github.com/dmnyc/mutable/pull/49) · [dmnyc/mutable#50](https://github.com/dmnyc/mutable/pull/50) |
+| zap.cooking | 0.6.0 | Merged; the 0.6.1 update is in review | [zapcooking/frontend#753](https://github.com/zapcooking/frontend/pull/753) · [zapcooking/frontend#759](https://github.com/zapcooking/frontend/pull/759) |
+| Jank (fork) | 0.5.0 | Merged in v26.16.0; the 0.6.1 update is in review | [DocNR/jank#22](https://github.com/DocNR/jank/pull/22) · [DocNR/jank#24](https://github.com/DocNR/jank/pull/24) |
 
 Origins: the core survived React, Vue, and Svelte ports in
 [Mutable](https://github.com/dmnyc/mutable); the list-recovery concept first
@@ -80,6 +81,6 @@ shipped in [Plebs vs Zombies](https://github.com/dmnyc/plebs-vs-zombies).
 
 ## Status
 
-Spec **0.6.0-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
+Spec **0.6.1-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
 the full document: per-kind registry, delta rule, meaningful-empty,
 recommendation rules, client integration contracts, conformance vectors.

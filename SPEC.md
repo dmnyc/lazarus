@@ -2,7 +2,7 @@
 
 **Recovery of user data from relay history on Nostr**
 
-- **Version:** 0.6.0-draft
+- **Version:** 0.6.1-draft
 - **Status:** DRAFT. Expect changes before 1.0; implementations should track the changelog.
 - **Author:** @dmnyc
 - **Licensing:** TBD (suggest CC0 for the spec, MIT for the reference library)
@@ -360,7 +360,7 @@ listed is out of scope until this document is amended.
 | 10000 | Mute list (NIP-51) | 1 | count: clobber detection | Private items apply. Delta rule applies with re-mute warning. |
 | 0 | Profile metadata (NIP-01) | 2 | recency, user picks | Size ranking is meaningless here; profiles change legitimately and often. Show field-level diffs between candidates and current, covering every field and tag that would change (see the delta rule). Highest rogue-client casualty rate. |
 | 10003 | Bookmarks (NIP-51) | 2 | count: clobber detection | Private items apply. `e` and `a` tags. High user pain, zero effect on others. |
-| 10044 | Encryption key list (NIP-4e, draft) | 2 | none: intent confirmation required (`meaningful-empty`) | Empty = "I no longer use NIP-4e" is a defined state, not damage (invariant 3 exception). Recovery or re-emptying MUST be preceded by an explicit intent question. Auto-repairing this kind is a conformance violation even for clients that implement NIP-4e. Display: show the `p`-tagged encryption pubkeys per candidate. |
+| 10044 | Encryption key list (NIP-4e, draft) | 2 | none: intent confirmation required (`meaningful-empty`) | Empty = "I no longer use NIP-4e" is a defined state, not damage (invariant 3 exception). Recovery or re-emptying MUST be preceded by an explicit intent question. Auto-repairing this kind is a conformance violation even for clients that implement NIP-4e. Items are the `n` tags, where NIP-4e lists encryption pubkeys; show them per candidate. |
 | 10002 | Relay list (NIP-65) | 3 | recency, user picks | Mandatory staleness warning: an old relay list can strand the user on dead relays and silently break event delivery. Implementations SHOULD liveness-check candidate relays before recommending. |
 | 10050 | DM relay inbox (NIP-17) | 3 | recency, user picks | Same staleness warning as 10002; a wrong inbox list silently breaks DM delivery. |
 | 10006 | Blocked relays (NIP-51) | 3 | count: clobber detection | Low stakes. |
@@ -525,6 +525,10 @@ publish on explicit click through the user's signer, republish widely.
 
 ## Changelog
 
+- 0.6.1-draft: the kind 10044 registry row counts the `n` tags NIP-4e
+  lists encryption pubkeys in. It named `p` tags, so implementations
+  following it read every key list as empty; a fourth implementation
+  caught it.
 - 0.6.0-draft: relay failure semantics, untrusted relays and complete
   deltas, after review of a third implementation found that an
   unreachable relay read as an empty one, which let the re-read before
