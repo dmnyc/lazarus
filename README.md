@@ -14,8 +14,10 @@ an explicit click, only with the user's own signer.
 1. **Never automatic.** Nothing is restored without the user clicking.
 2. **Show everything.** Every version found is displayed: counts, timestamps,
    origin relay, gaps.
-3. **Tombstones are never recommended.** A deletion event is a decision, not
-   damage. Lazarus surfaces them; it never ranks one as "the good state."
+3. **Tombstones are never recommended.** An empty version of a list is
+   usually the fingerprint of the client that clobbered it. Lazarus shows
+   it, never recommends it, and never offers a past one for restore. Where
+   empty is a defined state (kind 10044), it is an option like any other.
 4. **Your keys, your publish.** Restoration uses the client's own signer on
    an explicit click. No key custody, ever.
 
@@ -31,8 +33,8 @@ Private items in NIP-51 lists are handled under a three-certainties
 contract: **exact** count after decrypting with the user's key, **estimated**
 min/max band from encrypted payload sizing (NIP-44 padded length, NIP-04
 block bounds) when it can't be decrypted, **flagged** when neither applies.
-Ranking compares total ranges, so a private-only list that was emptied never
-reads as a zero.
+Ranking compares total ranges, so a full private-only list and an emptied
+one no longer read as the same zero.
 
 Recommendations follow clobbers, not size. Lists shrink through normal
 curation, so a version is only recommended after a sudden drop (a fifth of
@@ -81,6 +83,6 @@ shipped in [Plebs vs Zombies](https://github.com/dmnyc/plebs-vs-zombies).
 
 ## Status
 
-Spec **0.6.1-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
+Spec **0.6.2-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
 the full document: per-kind registry, delta rule, meaningful-empty,
 recommendation rules, client integration contracts, conformance vectors.

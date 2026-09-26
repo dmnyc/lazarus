@@ -2,7 +2,7 @@
 
 **Recovery of user data from relay history on Nostr**
 
-- **Version:** 0.6.1-draft
+- **Version:** 0.6.2-draft
 - **Status:** DRAFT. Expect changes before 1.0; implementations should track the changelog.
 - **Author:** @dmnyc
 - **Licensing:** TBD (suggest CC0 for the spec, MIT for the reference library)
@@ -32,21 +32,32 @@ or a background service.
 - **Candidate:** one distinct event of the target kind, authored by the user,
   found during a scan. Distinctness is by event id.
 - **Current:** the candidate with the highest `created_at` in the scan
-  results. Note: this is what the scan *saw*, and a relay that already dropped
-  history may not show the true current event. Implementations SHOULD treat
-  "current" as provisional, and MUST treat it as unconfirmed until at least
-  one of the user's write relays has answered (see Relay outcomes).
+  results; of two with the same `created_at`, the one with the lowest id,
+  since that is the one NIP-01 has relays keep. The same order decides
+  "newer" and "consecutive" everywhere in this document. Note: this is what
+  the scan *saw*, and a relay that already dropped history may not show the
+  true current event. Implementations SHOULD treat "current" as provisional,
+  and MUST treat it as unconfirmed until at least one of the user's write
+  relays has answered (see Relay outcomes).
 - **Answered:** a relay answered a request when it sent EOSE for it, with or
   without events. A relay that failed to connect, closed the request or the
   connection first, or timed out did not answer, whatever it sent before.
 - **Write relays:** the relays the user's relay list (kind 10002) marks for
   writing, including unmarked relays, which NIP-65 treats as both read and
   write.
-- **Empty candidate:** a candidate whose item set is empty. For most kinds an
-  empty candidate is a **tombstone** (evidence of a clobber). For kinds
-  flagged `meaningful-empty` in the registry, an empty item set is a defined
-  state with its own semantics, and the candidate is a **valid option**, not
-  a tombstone.
+- **Items:** what a version holds, each counted once. For list kinds they
+  are the tags the registry names for the kind, compared as the delta rule
+  compares them; a tag with no value is not an item, and an item listed
+  twice, or both publicly and privately, is one item. For kind 0 they are
+  the fields of the `content` JSON object that have a non-null value;
+  content that is not a JSON object has none.
+- **Empty candidate:** a candidate with no items, meaning a maximum item
+  count of zero (see Private items). A candidate whose count may be zero but
+  may also be more is not empty. For most kinds an empty candidate is a
+  **tombstone** (evidence of a clobber). For kinds flagged
+  `meaningful-empty` in the registry, an empty item set is a defined state
+  with its own semantics, and the candidate is a **valid option**, not a
+  tombstone.
 - **Recovery:** publishing a chosen candidate's item set again, as a fresh
   signed event of the same kind, making it the newest version.
 
@@ -98,7 +109,12 @@ Items compare by type and value (`tag[0]` and `tag[1]`): a relay hint or
 petname a client rewrote is not a change, or an identical follow list would
 read as hundreds of follows added and removed. On relay lists the
 read/write marker is part of the item, since it changes what the relay is
-for. Profiles (kind 0) keep their data in `content`, so their delta is the
+for. On every kind whose items are relays (10002, 10050, 10006), relay URLs
+compare normalized: scheme and host lowercased, a default port dropped,
+repeated slashes in the path collapsed to one, and a trailing slash
+dropped, so a client that rewrote `wss://Relay.Example/` as
+`wss://relay.example` changed nothing. Profiles (kind 0) keep their data in
+`content`, so their delta is the
 list of fields that would change: every field, not a fixed set, since
 profile content is extensible and a restore replaces all of it. A fixed set
 can report no change while the restore reverts fields it never compared.
@@ -110,12 +126,21 @@ version's private items, the delta MUST include them: on a mute list they
 can be most of the accounts a restore would re-silence. When it can't
 (no key available, a decryption that failed or was denied, or a request
 too large for a remote signer), the delta MUST state that private items are
-uncounted.
+uncounted, and on which side: the chosen version, current, or both.
+Uncounted private items on current are the dangerous side. The restore
+replaces them without anyone having counted them, so it may remove items
+no count shows, and it MUST take the separate confirmation a shrinking
+recovery takes. Two versions with identical `content` hold the same
+private items, counted or not.
 
 For `meaningful-empty` kinds, the delta MUST additionally state the meaning
-of both endpoints. Example for kind 10044: "This restores your NIP-4e
-encryption keys. Clients will encrypt direct messages to them again." versus
-"The current empty state announces that you do not use NIP-4e."
+of both endpoints, in the direction of the restore. Example for kind 10044:
+"This restores your NIP-4e encryption keys. Clients will encrypt direct
+messages to them again." versus "The current empty state announces that you
+do not use NIP-4e." Choosing an empty version over a list of keys reverses
+both: "This announces that you no longer use NIP-4e; clients stop
+encrypting direct messages to your keys." versus "Your current version
+lists keys that clients encrypt direct messages to."
 
 ## Algorithm
 
@@ -130,8 +155,11 @@ encryption keys. Clients will encrypt direct messages to them again." versus
    different archival sets will see different histories and both are
    conformant. The user's relay list is the newest kind 10002 found (by
    `created_at`), in the implementation's own copy or on relays, not the
-   first one to arrive; see Relay outcomes for a relay list that is
-   missing or could not be fetched.
+   first one to arrive. An own copy kept as a parsed list rather than as
+   the signed event has no `created_at` to compare: any relay's copy then
+   wins, and the own copy stands in only when no relay returned one,
+   labeled as such. See Relay outcomes for a relay list that is missing or
+   could not be fetched.
 2. For each relay, request `kinds: [K], authors: [pubkey]` with a per-relay
    timeout (reference: 6000 ms) and a limit of at least 50. Implementations
    MUST NOT treat a partial relay response as a complete history. Record
@@ -152,6 +180,12 @@ encryption keys. Clients will encrypt direct messages to them again." versus
 5. Deduplicate by event id. Preserve `found_on` relay lists per candidate
    and report each relay's outcome, not only the relays that returned
    events.
+
+A scan asks relays outside the user's own list for the user's events.
+Implementations SHOULD NOT answer NIP-42 authentication challenges from
+those relays during a scan: authenticating proves to each of them that the
+account itself is asking. A relay that requires authentication then fails
+the request, and that is its outcome.
 
 Informative: `wss://hist.nostr.land` and `wss://relay.ditto.pub` were
 observed keeping full replaceable history (hundreds of versions of one
@@ -181,8 +215,9 @@ incomplete, not that what arrived is void.
 
 - **Relay list.** If relays answered the relay list lookup and none
   returned a kind 10002, the user has no relay list: implementations MUST
-  say so, and MAY use their default set as the write relays, labeled as
-  defaults wherever write relays are shown. A relay list that names no
+  say so, and MAY use their default write relays in its place, labeled as
+  defaults wherever write relays are shown; a default meant only for
+  reading does not judge a write. A relay list that names no
   write relays counts as missing. If no relay answered the
   lookup and the implementation holds no copy of the list, the relay list
   is unknown: implementations MUST NOT substitute their defaults for it.
@@ -212,6 +247,15 @@ page as a generic connection error, indistinguishable from a dead relay.
 The rules above keep an exhausted pool from producing a wrong answer; they
 cannot make it produce a complete one.
 
+Informative: common pool libraries blur the three outcomes. nostr-tools'
+SimplePool, for one, reports a relay that sends `CLOSED` or drops the
+connection as an EOSE followed by a close, in the same tick, and
+synthesizes an EOSE for a relay that stays silent past the library's own
+timeout. Taking the library's EOSE callback as an answer records every
+failed relay as answered. Helpers that resolve one event or none (a pooled
+`get`) cannot tell "every relay refused" from "answered with nothing", so
+the relay list lookup needs each relay's outcome too.
+
 ### Rank
 
 Ranking is a **per-kind profile** (see the registry). Candidates are
@@ -232,17 +276,27 @@ the current version looks clobbered:
 - Walking back from the newest version, find the most recent sudden drop
   the current version hasn't recovered from: the current version is still
   missing at least 20%, and at least 5 items, of the version from just
-  before the drop.
+  before the drop, or is empty while that version was not. An emptied list
+  has not recovered, however few items it held.
 - Drops back to back, or within 24 hours of each other, form one
-  **clobber episode**. Recommend the fullest version from just before any
-  drop in that episode, so a list that was clobbered, partly restored, and
-  clobbered again points at its fullest state before the damage.
-- A clobber the list has since been edited on at least 5 times, over at
-  least a week, is **settled**: the current version is the user's choice,
-  and nothing is recommended.
+  **clobber episode**: each drop joins the episode of the drop before it
+  when the two are back to back or their dropped versions are within 24
+  hours. Recommend the fullest version from just before any drop in that
+  episode, so a list that was clobbered, partly restored, and clobbered
+  again points at its fullest state before the damage. Fullest means the
+  largest minimum item count (see Private items); of two with the same
+  minimum, the newer.
+- A clobber episode is **settled** when at least 5 versions are newer than
+  its last drop (the dropped version is the clobber, not an edit on it)
+  and the newest of them is at least a week newer than that drop: the
+  current version is the user's choice, and nothing is recommended.
 - Sizes are compared conservatively: a drop uses the later version's
   maximum and the earlier version's minimum (see Private items), and
-  nothing is recommended while the current version's size is unknown.
+  nothing is recommended while the current version's size is unknown. A
+  version whose size is unknown (flagged) takes no part in finding drops,
+  episodes, the settled count or the fullest version: it is shown, never
+  recommended, and consecutive means consecutive among versions of known
+  size.
 - Nothing is recommended while current is unconfirmed (see Relay
   outcomes). Drops are measured against current, and a scan that never
   reached the user's write relays may be measuring against a version the
@@ -280,10 +334,28 @@ account for private items at one of three certainties:
    ranking MUST use the full count (public plus private).
 2. **Estimated.** If content cannot be decrypted, the implementation
    SHOULD still derive an item-count range from the encrypted payload
-   size: NIP-44 v2 payloads have 67 bytes of overhead and a
-   power-of-two padded length, NIP-04 (AES-CBC) plaintexts are bounded
-   to 1-16 bytes of padding per 16-byte block. With the assumed per-item
-   JSON shape, the byte range yields a minimum and maximum item count.
+   size, in two steps.
+   - The plaintext length range. NIP-44 v2 wraps the padded plaintext in
+     67 bytes of overhead (version, nonce, length prefix, MAC) and pads by
+     NIP-44's `calc_padded_len`: 32 bytes at least, then 32-byte steps up
+     to 256, then steps of an eighth of the next power of two. The padded
+     length is not a power of two in general: a 300-byte plaintext pads
+     to 320. A payload whose padded length `calc_padded_len` cannot
+     produce is not NIP-44 v2 and cannot be sized; a valid padded length L
+     holds any plaintext from one byte past the previous valid padded
+     length up to L. NIP-04 (AES-256-CBC) ciphertext is whole 16-byte
+     blocks, and PKCS#7 adds 1 to 16 bytes of padding once, not per
+     block, so b blocks hold a plaintext of 16b-16 to 16b-1 bytes; a
+     ciphertext that is not whole blocks cannot be sized.
+   - Items, from the reference per-item shape `["p","<64-hex>"]`: 72
+     bytes, so an n-item list serializes to 73n + 1 bytes. A plaintext of
+     lo to hi bytes holds max(0, floor((lo - 1) / 73)) to
+     ceil((hi - 1) / 73) items, rounded outward so the range never
+     inverts. The minimum can be zero: a payload too small for one such
+     item may be an emptied list. Lists heavy in shorter items (muted
+     words, hashtags) hold more than the estimate says; the shape is a
+     reference so implementations agree, not a promise about the list.
+
    An estimate is enough to tell an emptied private list from a full
    one, which public counts alone cannot.
 3. **Flagged.** Only when no key is available AND the payload cannot be
@@ -343,10 +415,14 @@ the same kind, sign with the user's own signer, and publish.
   restored version names. The recovered version SHOULD also go to every
   other relay that answered the scan, as a best effort that doesn't affect
   the result: those relays hold older copies and keep serving the
-  clobbered one otherwise.
+  clobbered one otherwise. The user's own relay policy, such as a setting
+  to publish only to the relays their list declares, overrides this best
+  effort.
 - Implementations MUST update their own local copy of the list with the
   recovered version. Otherwise the client's next edit rebuilds from the
-  clobbered copy and clobbers the list again.
+  clobbered copy and clobbers the list again. Update it rather than only
+  invalidating it: an invalidated copy is refetched from whichever relay
+  answers first, which can be one still serving the clobbered version.
 
 ## Kind registry
 
@@ -357,13 +433,13 @@ listed is out of scope until this document is amended.
 | Kind | Name | Tier | Ranking profile | Notes |
 |---|---|---|---|---|
 | 3 | Follow list (NIP-02) | 1 | count: clobber detection | The reference implementation. `p` tags; `content` may hold relay hints, preserve verbatim. |
-| 10000 | Mute list (NIP-51) | 1 | count: clobber detection | Private items apply. Delta rule applies with re-mute warning. |
-| 0 | Profile metadata (NIP-01) | 2 | recency, user picks | Size ranking is meaningless here; profiles change legitimately and often. Show field-level diffs between candidates and current, covering every field and tag that would change (see the delta rule). Highest rogue-client casualty rate. |
+| 10000 | Mute list (NIP-51) | 1 | count: clobber detection | Private items apply. Items are the `p`, `t`, `word` and `e` tags (NIP-51: accounts, hashtags, words, threads). Delta rule applies with re-mute warning. |
+| 0 | Profile metadata (NIP-01) | 2 | recency, user picks | Items are the `content` fields (see Terminology). Size ranking is meaningless here; profiles change legitimately and often. Show field-level diffs between candidates and current, covering every field and tag that would change (see the delta rule). Highest rogue-client casualty rate. |
 | 10003 | Bookmarks (NIP-51) | 2 | count: clobber detection | Private items apply. `e` and `a` tags. High user pain, zero effect on others. |
 | 10044 | Encryption key list (NIP-4e, draft) | 2 | none: intent confirmation required (`meaningful-empty`) | Empty = "I no longer use NIP-4e" is a defined state, not damage (invariant 3 exception). Recovery or re-emptying MUST be preceded by an explicit intent question. Auto-repairing this kind is a conformance violation even for clients that implement NIP-4e. Items are the `n` tags, where NIP-4e lists encryption pubkeys; show them per candidate. |
-| 10002 | Relay list (NIP-65) | 3 | recency, user picks | Mandatory staleness warning: an old relay list can strand the user on dead relays and silently break event delivery. Implementations SHOULD liveness-check candidate relays before recommending. |
-| 10050 | DM relay inbox (NIP-17) | 3 | recency, user picks | Same staleness warning as 10002; a wrong inbox list silently breaks DM delivery. |
-| 10006 | Blocked relays (NIP-51) | 3 | count: clobber detection | Low stakes. |
+| 10002 | Relay list (NIP-65) | 3 | recency, user picks | Items are the `r` tags, marker included. Mandatory staleness warning: an old relay list can strand the user on dead relays and silently break event delivery. Implementations SHOULD liveness-check candidate relays before recommending. |
+| 10050 | DM relay inbox (NIP-17) | 3 | recency, user picks | Items are the `relay` tags. Same staleness warning as 10002; a wrong inbox list silently breaks DM delivery. |
+| 10006 | Blocked relays (NIP-51) | 3 | count: clobber detection | Items are the `relay` tags. Low stakes. |
 
 ### Why not the rest
 
@@ -469,16 +545,26 @@ A client or library is **Lazarus-compatible** if and only if:
 
 1. It honors the four invariants and the delta rule.
 2. It passes the shared test vectors for every Tier 1 kind it supports:
-   - scan fixtures: dedupe, paging, and relays that return foreign or
-     forged events;
+   - scan fixtures: dedupe, paging (including a full page with nothing
+     older than the cursor), and relays that return foreign or forged
+     events;
    - ranking fixtures: tombstone, meaningful-empty, partially-counted,
-     private-item-estimate, gradual curation, and clobber-episode cases;
-   - delta fixtures, including private items;
-   - relay-outcome fixtures: a relay that fails or times out is never
-     reported as empty, and a scan no write relay answered recommends
-     nothing;
-   - pre-sign re-read fixtures: a newer version, an older copy, and no
-     write relay answering.
+     private-item-estimate (NIP-44 padded lengths that are not powers of
+     two; NIP-04 payloads of one block and of many), gradual curation,
+     clobber-episode, same-second versions, a list emptied from fewer
+     than 5 items, and a clobber settled by versions after its episode's
+     last drop;
+   - delta fixtures, including private items (uncounted on current as
+     well as on the chosen version), duplicated tags, and relay URLs that
+     differ only in normalization;
+   - relay-outcome fixtures: a relay that sends `CLOSED` before EOSE,
+     drops the connection, refuses it, or never answers is failed or
+     timed out, never empty, including under a library that synthesizes
+     an EOSE of its own; a relay list lookup in which every relay refuses
+     is unknown, not missing; and a scan no write relay answered
+     recommends nothing;
+   - pre-sign re-read fixtures: a newer version, an older copy, a
+     same-second version with a lower id, and no write relay answering.
 3. It reports its relay configuration and each relay's outcome alongside
    recovery results, so a "nothing found" answer can be judged against the
    relays that actually answered.
@@ -525,6 +611,25 @@ publish on explicit click through the user's signer, republish widely.
 
 ## Changelog
 
+- 0.6.2-draft: errata and agreement rules, after a fifth implementation,
+  written from this text rather than ported from the reference code,
+  estimated private items wrong. The NIP-44 estimate follows NIP-44's
+  `calc_padded_len`, not a power-of-two padded length, which read most
+  real private lists as unsizable; NIP-04 padding is 1 to 16 bytes once,
+  not per block; and the per-item shape and its outward rounding are
+  pinned, since the estimate decides drops, with a minimum that can be
+  zero. Rules implementations had answered differently are now written
+  down: same-second versions order as NIP-01 keeps them; items are
+  distinct, a tag without a value is not one, and a profile's items are
+  its content fields; relay URLs compare normalized; fullest is the
+  largest minimum; versions of unknown size take no part in finding drops;
+  an emptied current version has not recovered, however small the list;
+  and a clobber is settled by versions after its episode's last drop. The
+  registry names every kind's items. Uncounted private items on current
+  take the shrink confirmation, the meaningful-empty delta reads in the
+  restore's direction, local copies are updated rather than invalidated,
+  scans don't authenticate to relays outside the user's list, and the
+  best-effort republish yields to the user's relay policy.
 - 0.6.1-draft: the kind 10044 registry row counts the `n` tags NIP-4e
   lists encryption pubkeys in. It named `p` tags, so implementations
   following it read every key list as empty; a fourth implementation
