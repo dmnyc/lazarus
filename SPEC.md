@@ -2,7 +2,7 @@
 
 **Recovery of user data from relay history on Nostr**
 
-- **Version:** 0.5.0-draft
+- **Version:** 0.6.0-draft
 - **Status:** DRAFT. Expect changes before 1.0; implementations should track the changelog.
 - **Author:** @dmnyc
 - **Licensing:** TBD (suggest CC0 for the spec, MIT for the reference library)
@@ -34,7 +34,14 @@ or a background service.
 - **Current:** the candidate with the highest `created_at` in the scan
   results. Note: this is what the scan *saw*, and a relay that already dropped
   history may not show the true current event. Implementations SHOULD treat
-  "current" as provisional.
+  "current" as provisional, and MUST treat it as unconfirmed until at least
+  one of the user's write relays has answered (see Relay outcomes).
+- **Answered:** a relay answered a request when it sent EOSE for it, with or
+  without events. A relay that failed to connect, closed the request or the
+  connection first, or timed out did not answer, whatever it sent before.
+- **Write relays:** the relays the user's relay list (kind 10002) marks for
+  writing, including unmarked relays, which NIP-65 treats as both read and
+  write.
 - **Empty candidate:** a candidate whose item set is empty. For most kinds an
   empty candidate is a **tombstone** (evidence of a clobber). For kinds
   flagged `meaningful-empty` in the registry, an empty item set is a defined
@@ -92,7 +99,18 @@ petname a client rewrote is not a change, or an identical follow list would
 read as hundreds of follows added and removed. On relay lists the
 read/write marker is part of the item, since it changes what the relay is
 for. Profiles (kind 0) keep their data in `content`, so their delta is the
-list of fields that would change.
+list of fields that would change: every field, not a fixed set, since
+profile content is extensible and a restore replaces all of it. A fixed set
+can report no change while the restore reverts fields it never compared.
+Tags that would change count too (NIP-30 custom emoji live in a profile's
+tags).
+
+Private items are part of the delta. When the implementation can decrypt a
+version's private items, the delta MUST include them: on a mute list they
+can be most of the accounts a restore would re-silence. When it can't
+(no key available, a decryption that failed or was denied, or a request
+too large for a remote signer), the delta MUST state that private items are
+uncounted.
 
 For `meaningful-empty` kinds, the delta MUST additionally state the meaning
 of both endpoints. Example for kind 10044: "This restores your NIP-4e
@@ -110,22 +128,89 @@ encryption keys. Clients will encrypt direct messages to them again." versus
    event, so a scan limited to them misses most of the history. The relay
    sets are configuration, not protocol; two implementations with
    different archival sets will see different histories and both are
-   conformant.
+   conformant. The user's relay list is the newest kind 10002 found (by
+   `created_at`), in the implementation's own copy or on relays, not the
+   first one to arrive; see Relay outcomes for a relay list that is
+   missing or could not be fetched.
 2. For each relay, request `kinds: [K], authors: [pubkey]` with a per-relay
    timeout (reference: 6000 ms) and a limit of at least 50. Implementations
-   MUST NOT treat a partial relay response as a complete history.
-3. A relay that returns a full page may hold older versions.
+   MUST NOT treat a partial relay response as a complete history. Record
+   each relay's outcome (see Relay outcomes).
+3. Relays are untrusted: a relay can return events outside the filter, or
+   forged ones, and a restore would sign their content as the user's own.
+   Implementations MUST verify each event's signature and discard it
+   unless its author is the scanned account and its kind is the requested
+   kind, before it can become a candidate, add a relay to a `found_on`
+   list, or move a paging cursor. A relay that answered with only invalid
+   events answered with nothing. The pre-sign re-read (see Recover)
+   applies the same checks.
+4. A relay that returns a full page may hold older versions.
    Implementations SHOULD let the user page further back from those
    relays on request, with `until` set to the oldest `created_at` that
    relay returned. `until` is inclusive, so the next page repeats that
    event; a relay whose next page brings nothing older is exhausted.
-4. Deduplicate by event id. Preserve `found_on` relay lists per candidate
-   and report which relays answered.
+5. Deduplicate by event id. Preserve `found_on` relay lists per candidate
+   and report each relay's outcome, not only the relays that returned
+   events.
 
 Informative: `wss://hist.nostr.land` and `wss://relay.ditto.pub` were
 observed keeping full replaceable history (hundreds of versions of one
 follow list) in 2026-09. Large public relays often still hold versions the
 user's own relays already replaced.
+
+### Relay outcomes
+
+A relay that could not be reached and a relay with nothing to give look
+the same to naive code: no events. Lazarus asks whether anything is there
+in three places (the scan, the relay list lookup, and the re-read before
+signing), and in all three it MUST tell the two apart. Every relay request
+ends in exactly one outcome:
+
+- **Answered:** the relay sent EOSE, with or without events.
+- **Failed:** the connection could not be opened, or the relay closed the
+  request (a NIP-01 `CLOSED`, such as NIP-42's `auth-required:`) or the
+  connection before EOSE.
+- **Timed out:** no EOSE arrived within the per-relay timeout.
+
+Only an answered relay counts as having nothing. A failed or timed-out
+relay MUST NOT count toward "nothing found", "no relay list", or
+"unchanged since the review": silence is not evidence. Events a relay sent
+before it failed or timed out are real signed versions and remain
+candidates (invariant 2); the outcome records that the relay's history is
+incomplete, not that what arrived is void.
+
+- **Relay list.** If relays answered the relay list lookup and none
+  returned a kind 10002, the user has no relay list: implementations MUST
+  say so, and MAY use their default set as the write relays, labeled as
+  defaults wherever write relays are shown. A relay list that names no
+  write relays counts as missing. If no relay answered the
+  lookup and the implementation holds no copy of the list, the relay list
+  is unknown: implementations MUST NOT substitute their defaults for it.
+  The scan still covers the default and archival sets, and current stays
+  unconfirmed.
+- **Confirmed current.** A scan result MUST set `current_confirmed: true`
+  only when at least one of the user's write relays answered. Otherwise
+  the newest version found may not be current, since a newer one can sit
+  on the write relays the scan never reached. An unconfirmed current
+  withholds the recommendation (see Rank) and gates the restore (see
+  Recover).
+- **Failed scan.** A scan in which no relay answered is a failed scan, not
+  a result: implementations MUST present it as an error with a retry,
+  never as "no versions found", while still showing any versions that
+  arrived before the relays failed (invariant 2).
+- **Retry.** Implementations SHOULD offer to retry the relays that failed
+  or timed out, without repeating the whole scan.
+- **Connection budget.** Implementations SHOULD bound concurrent
+  connections, reuse one connection per relay across pages, and release
+  connections opened only for the scan once it finishes or is canceled.
+
+Informative: a scan opens many connections at once (the user's full relay
+list, the default and archival sets, then paging), often on top of
+connections the client already holds for other features. Browsers cap open
+WebSocket connections, and a connection refused over the cap reaches the
+page as a generic connection error, indistinguishable from a dead relay.
+The rules above keep an exhausted pool from producing a wrong answer; they
+cannot make it produce a complete one.
 
 ### Rank
 
@@ -158,8 +243,14 @@ the current version looks clobbered:
 - Sizes are compared conservatively: a drop uses the later version's
   maximum and the earlier version's minimum (see Private items), and
   nothing is recommended while the current version's size is unknown.
+- Nothing is recommended while current is unconfirmed (see Relay
+  outcomes). Drops are measured against current, and a scan that never
+  reached the user's write relays may be measuring against a version the
+  user already replaced.
 - If no drop qualifies, "no recoverable improvement found" is the correct
-  answer and MUST be presented as a normal result, not an error.
+  answer and MUST be presented as a normal result, not an error, alongside
+  the relay outcomes it rests on. A failed scan is not this result (see
+  Relay outcomes).
 
 The thresholds (20%, 5 items, 24 hours, 5 edits over a week) are reference
 values.
@@ -213,21 +304,46 @@ encrypted content if present and decryptable), construct a fresh event of
 the same kind, sign with the user's own signer, and publish.
 
 - Immediately before signing, implementations MUST re-read the current
-  version, from their local copy and the user's write relays. If it changed
-  since the review (an edit from another view, device or client), recompute
-  the delta and ask again: restoring over it would silently drop those
-  edits.
+  version, from their local copy and the user's write relays. The list has
+  changed only if the re-read finds a version newer than the one the delta
+  was computed against: the re-read asks fewer relays than the scan did, so
+  an older copy is not a change. If it changed (an edit from another view,
+  device or client), the newer version becomes current: recompute the
+  delta against it and ask again, since restoring over it would silently
+  drop those edits.
+- The re-read MUST get an answer from at least one of the user's write
+  relays, and SHOULD wait for every write relay up to the timeout rather
+  than stopping at the first answer. A relay that answers with no events
+  has answered (see Relay outcomes). The local copy cannot confirm current
+  on its own: edits from other devices and clients may never reach it. If
+  no write relay answers, the implementation MUST NOT sign, except through
+  the override below; it says the current version could not be confirmed
+  and offers a retry. An absent answer is not an unchanged one.
+- After a retry fails, an implementation MAY let the user restore anyway,
+  as a separate explicit confirmation stating that the current version
+  could not be confirmed and that edits made since the review may be
+  lost. That confirmation MUST NOT be pre-selected or remembered between
+  restores. The override exists because relay lists naming only dead
+  relays are common, and restoring an older relay list is often the fix.
 - The recovered event's `created_at` MUST be later than the version it
-  replaces: `max(now, current.created_at + 1)`. Clobbering clients often
+  replaces: `max(now, current.created_at + 1)`, where current is the
+  newest version known at signing (the one the delta was computed
+  against), never an older copy the re-read found. Clobbering clients often
   have skewed clocks, and an older timestamp loses to the clobbered version
   on relays and in caches.
 - The signing account MUST be the list's author. A client with several
   accounts MUST NOT restore one account's list as another's, including when
   the active account changes during a signer approval.
-- Success is judged on the user's write relays. The recovered version
-  SHOULD also go to every other relay that answered the scan, as a best
-  effort that doesn't affect the result: those relays hold older copies and
-  keep serving the clobbered one otherwise.
+- Success is judged on the user's write relays: a restore succeeds when at
+  least one of them accepts the event (NIP-01 `OK` true), and the result
+  SHOULD name which write relays accepted it and which did not. A restore
+  that no write relay accepted is reported as failed, whatever other
+  relays did. For kind 10002, whose restore replaces the write relays
+  themselves, implementations MAY judge success on the write relays the
+  restored version names. The recovered version SHOULD also go to every
+  other relay that answered the scan, as a best effort that doesn't affect
+  the result: those relays hold older copies and keep serving the
+  clobbered one otherwise.
 - Implementations MUST update their own local copy of the list with the
   recovered version. Otherwise the client's next edit rebuilds from the
   clobbered copy and clobbers the list again.
@@ -242,7 +358,7 @@ listed is out of scope until this document is amended.
 |---|---|---|---|---|
 | 3 | Follow list (NIP-02) | 1 | count: clobber detection | The reference implementation. `p` tags; `content` may hold relay hints, preserve verbatim. |
 | 10000 | Mute list (NIP-51) | 1 | count: clobber detection | Private items apply. Delta rule applies with re-mute warning. |
-| 0 | Profile metadata (NIP-01) | 2 | recency, user picks | Size ranking is meaningless here; profiles change legitimately and often. Show field-level diffs between candidates and current (name, picture, nip05, about). Highest rogue-client casualty rate. |
+| 0 | Profile metadata (NIP-01) | 2 | recency, user picks | Size ranking is meaningless here; profiles change legitimately and often. Show field-level diffs between candidates and current, covering every field and tag that would change (see the delta rule). Highest rogue-client casualty rate. |
 | 10003 | Bookmarks (NIP-51) | 2 | count: clobber detection | Private items apply. `e` and `a` tags. High user pain, zero effect on others. |
 | 10044 | Encryption key list (NIP-4e, draft) | 2 | none: intent confirmation required (`meaningful-empty`) | Empty = "I no longer use NIP-4e" is a defined state, not damage (invariant 3 exception). Recovery or re-emptying MUST be preceded by an explicit intent question. Auto-repairing this kind is a conformance violation even for clients that implement NIP-4e. Display: show the `p`-tagged encryption pubkeys per candidate. |
 | 10002 | Relay list (NIP-65) | 3 | recency, user picks | Mandatory staleness warning: an old relay list can strand the user on dead relays and silently break event delivery. Implementations SHOULD liveness-check candidate relays before recommending. |
@@ -281,15 +397,20 @@ bundled). It exports:
 - `scan(kind, pubkey, options)` and `rank(candidates, profile)` — pure
   functions, the conformance surface.
 - `computeDelta(chosen, current, profile)` — pure.
-- `buildRecoveryEvent(chosen, kind)` — returns an unsigned event template.
+- `checkCurrent(reviewed, local, answers)` — pure: decides the pre-sign
+  re-read from the local copy and each write relay's outcome and events
+  (proceed, changed with the newer version, or unconfirmed).
+- `buildRecoveryEvent(chosen, current)` — returns an unsigned event
+  template, dated after current.
 - Registry access: `getProfile(kind)` returns the ranking profile, tier,
   `meaningful-empty` flag, and required warnings, so clients never hardcode
   kind semantics. The core library hardcodes no kind numbers; the registry
   is the single source of truth and is versioned with the spec.
 - Adapter interfaces: `Signer` (NIP-07 / NIP-46 / secret-key agnostic),
-  `RelayPool` (connect, query with timeout, publish), `RelayCatalog`
-  (user / default / archival sets). Anything a client already has can be
-  wrapped in a few lines.
+  `RelayPool` (connect, query with timeout, publish; queries report each
+  relay's outcome, never an empty result for a relay that failed or timed
+  out), `RelayCatalog` (user / default / archival sets). Anything a client
+  already has can be wrapped in a few lines.
 - Test vectors as importable JSON, plus a `conformance()` helper that runs
   them: a client's adapters are conformant when `conformance()` passes
   against their `RelayPool` mock and the shared vectors.
@@ -306,6 +427,9 @@ A conformant client screen:
   into expandable groups, with episodes marked, and past empty versions
   hidden until requested (see invariants 2 and 3).
 - Offers a way to page further back when a relay filled a page.
+- Shows each relay's outcome, at least on request, and says plainly when
+  current could not be confirmed or the scan reached no relay; neither is
+  shown as "nothing found".
 - Shows the computed delta before any publish click, with the
   direction-of-harm warning for kinds that affect other people.
 - Renders `meaningful-empty` kinds with the intent question and never
@@ -327,8 +451,8 @@ restore in the list itself, not only at the publish step, and SHOULD
 decrypt grouped versions only when the user reviews one, since every
 decryption is a signer request.
 
-Minimum viable integration is a list, a delta line, and one button per
-candidate. Clients MAY go further (field diffs for kind 0, relay liveness
+Minimum viable integration is a list, a delta line (a field list for kind
+0), and one button per candidate. Clients MAY go further (relay liveness
 checks for kind 10002) per the registry's per-kind notes.
 
 ### Suggested rollout for client maintainers
@@ -344,12 +468,20 @@ checks for kind 10002) per the registry's per-kind notes.
 A client or library is **Lazarus-compatible** if and only if:
 
 1. It honors the four invariants and the delta rule.
-2. It passes the shared test vectors for every Tier 1 kind it supports
-   (scan/dedupe and paging fixtures, ranking fixtures including tombstone,
-   meaningful-empty, partially-counted, private-item-estimate, gradual
-   curation, and clobber-episode cases, delta computation fixtures).
-3. It reports its relay configuration alongside recovery results, so a
-   "nothing found" answer can be judged against the relays that were asked.
+2. It passes the shared test vectors for every Tier 1 kind it supports:
+   - scan fixtures: dedupe, paging, and relays that return foreign or
+     forged events;
+   - ranking fixtures: tombstone, meaningful-empty, partially-counted,
+     private-item-estimate, gradual curation, and clobber-episode cases;
+   - delta fixtures, including private items;
+   - relay-outcome fixtures: a relay that fails or times out is never
+     reported as empty, and a scan no write relay answered recommends
+     nothing;
+   - pre-sign re-read fixtures: a newer version, an older copy, and no
+     write relay answering.
+3. It reports its relay configuration and each relay's outcome alongside
+   recovery results, so a "nothing found" answer can be judged against the
+   relays that actually answered.
 
 Test vectors live with the reference implementation and are versioned with
 this spec. Ranking rules change only with a spec version bump; silent
@@ -362,8 +494,9 @@ The reference implementation (extracted from Mutable, where the core
 survived React, Vue, and Svelte ports, and hardened in production in
 the Jumble client, whose port contributed the private-items estimate
 tier and clobber detection) performs: scan the relay set with per-relay
-timeouts, page back on request, dedupe by event id, rank by the kind
-profile, render all candidates with deltas, recommend per the profile,
+timeouts, record each relay's outcome, page back on request, dedupe by
+event id, rank by the kind profile, render all candidates with deltas,
+recommend per the profile, confirm current on the user's write relays,
 publish on explicit click through the user's signer, republish widely.
 
 ## Non-goals
@@ -392,6 +525,28 @@ publish on explicit click through the user's signer, republish widely.
 
 ## Changelog
 
+- 0.6.0-draft: relay failure semantics, untrusted relays and complete
+  deltas, after review of a third implementation found that an
+  unreachable relay read as an empty one, which let the re-read before
+  signing pass with no relay answering. Every relay request now ends as
+  answered, failed or timed out, and only an answered relay counts as
+  having nothing; each relay's outcome is reported, and events that
+  arrived before a failure stay candidates. The relay list is the newest
+  kind 10002 found; a missing one is disclosed before defaults stand in,
+  and one that could not be fetched is never substituted. Current is
+  confirmed only when a write relay answered, and nothing is recommended
+  until it is. A scan no relay answered is a failed scan, not an empty
+  result. Relays are untrusted: an event counts only with a valid
+  signature, the scanned author and the requested kind. The re-read must
+  reach a write relay or the restore stops, with an explicit override
+  after a failed retry; only a newer version counts as a change, it
+  becomes current for the next review, and the recovery is dated after
+  it. Publish success means a write relay accepted the event. Profile
+  deltas cover every field and tag that would change, not a fixed set,
+  and deltas include private items whenever they can be decrypted. The
+  package contract gains `checkCurrent`, `buildRecoveryEvent` takes the
+  current version it dates after, and relay queries report outcomes.
+  Scans should bound and release their connections.
 - 0.5.0-draft: restore safety, after review of a second implementation.
   Re-read the current version before signing and ask again if it changed,
   date the recovered event after the version it replaces, restore only as

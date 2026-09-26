@@ -71,7 +71,7 @@ configuration, not protocol (see [SPEC.md](SPEC.md)).
 | Client | Status | Links |
 |---|---|---|
 | Jumble (fork) | Shipped — reference implementation | [Live deployment](https://jumble.dmnyc.net) · [dmnyc/jumble-spark](https://github.com/dmnyc/jumble-spark), branch `feat/lazarus-data-recovery-v2` |
-| Jank (fork) | PR open | [DocNR/jank#22](https://github.com/DocNR/jank/pull/22) · [dmnyc/jank](https://github.com/dmnyc/jank), branch `feat/lazarus-data-recovery` |
+| Jank (fork) | Merged in v26.16.0; 0.6.0 update in review | [DocNR/jank#22](https://github.com/DocNR/jank/pull/22) · [DocNR/jank#24](https://github.com/DocNR/jank/pull/24) |
 | zap.cooking | PR open | [zapcooking/frontend#753](https://github.com/zapcooking/frontend/pull/753) |
 
 Origins: the core survived React, Vue, and Svelte ports in
@@ -80,6 +80,6 @@ shipped in [Plebs vs Zombies](https://github.com/dmnyc/plebs-vs-zombies).
 
 ## Status
 
-Spec **0.5.0-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
+Spec **0.6.0-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
 the full document: per-kind registry, delta rule, meaningful-empty,
 recommendation rules, client integration contracts, conformance vectors.
