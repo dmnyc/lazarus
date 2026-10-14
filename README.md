@@ -1,3 +1,5 @@
+![Lazarus: chrome heavy-metal wordmark over a purple lightning storm](assets/logo/readme-banner.png)
+
 # Lazarus
 
 **Recovery of user data from relay history on Nostr.**
