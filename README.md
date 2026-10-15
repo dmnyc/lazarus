@@ -86,6 +86,12 @@ Origins: the core survived React, Vue, and Svelte ports in
 [Mutable](https://github.com/dmnyc/mutable); the list-recovery concept first
 shipped in [Plebs vs Zombies](https://github.com/dmnyc/plebs-vs-zombies).
 
+## Logo
+
+Implementations are welcome — never required — to show the Lazarus wordmark.
+SVGs and transparent PNGs (black, grey, white) live in
+[assets/logo](assets/logo/).
+
 ## Status
 
 Spec **0.6.2-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
