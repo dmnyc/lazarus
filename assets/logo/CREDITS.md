@@ -9,3 +9,5 @@
 - **Social preview background** (`social-preview-bg.jpg`): AI-generated with
   Google Gemini by the repository owner. `social-preview.jpg` is the finished
   preview (stored as JPEG to stay under GitHub's 1 MB social-preview limit).
+- **Square app icon** (`icon-1080.png` and downsized variants): LAZ mark over the
+  storm background — both supplied by the repository owner.
