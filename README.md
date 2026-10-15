@@ -91,3 +91,7 @@ shipped in [Plebs vs Zombies](https://github.com/dmnyc/plebs-vs-zombies).
 Spec **0.6.2-draft**. Expect changes before 1.0. See [SPEC.md](SPEC.md) for
 the full document: per-kind registry, delta rule, meaningful-empty,
 recommendation rules, client integration contracts, conformance vectors.
+
+Also in this repo: [MCP-SPEC.md](MCP-SPEC.md), the build spec for a
+developer MCP server that serves the spec to coding agents in slices and
+checks integrations against it. Specced, not yet built.
