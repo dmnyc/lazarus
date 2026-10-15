@@ -280,7 +280,7 @@ Defaults; override by editing this section before the build session.
   hosted read-only endpoint adds infrastructure and an auth story for no
   current demand. Revisit if a browser-based consumer appears.
 - **D4 Reference package: not yet published.** The implementations table
-  shows the reference living in the Jumble fork (0.6.1, feature branch).
+  shows the reference living in the Jumble fork (0.6.2, feature branch).
   Tools must not hardcode a package name or import path; the plan tool cites
   the package contract's exports and points at the implementations entry,
   which updates when the package ships.
