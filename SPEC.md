@@ -2,7 +2,7 @@
 
 **Recovery of user data from relay history on Nostr**
 
-- **Version:** 0.6.2-draft
+- **Version:** 0.7.0-draft
 - **Status:** DRAFT. Expect changes before 1.0; implementations should track the changelog.
 - **Author:** @dmnyc
 - **Licensing:** TBD (suggest CC0 for the spec, MIT for the reference library)
@@ -60,6 +60,12 @@ or a background service.
   tombstone.
 - **Recovery:** publishing a chosen candidate's item set again, as a fresh
   signed event of the same kind, making it the newest version.
+- **Merge:** a recovery whose item set combines two or more chosen
+  candidates and current, item by item, instead of taking one candidate's
+  item set whole (see Merge).
+- **Own history relay:** a relay the user runs or controls that keeps
+  superseded versions of the user's data kinds and serves them only to the
+  user, after NIP-42 authentication as the user's own pubkey.
 
 ## The four invariants
 
@@ -133,6 +139,13 @@ no count shows, and it MUST take the separate confirmation a shrinking
 recovery takes. Two versions with identical `content` hold the same
 private items, counted or not.
 
+A merge (see Merge) MUST show the delta twice: per chosen candidate (what
+that candidate adds over current) and in total (what the merged item set
+adds and removes against current, after any per-item changes). The total is
+the delta the rules above apply to: the direction-of-harm warning, the
+uncounted-private statement and the separate confirmation for a shrinking
+recovery.
+
 For `meaningful-empty` kinds, the delta MUST additionally state the meaning
 of both endpoints, in the direction of the restore. Example for kind 10044:
 "This restores your NIP-4e encryption keys. Clients will encrypt direct
@@ -159,7 +172,11 @@ lists keys that clients encrypt direct messages to."
    the signed event has no `created_at` to compare: any relay's copy then
    wins, and the own copy stands in only when no relay returned one,
    labeled as such. See Relay outcomes for a relay list that is missing or
-   could not be fetched.
+   could not be fetched. The relay set also includes any own history relay
+   the user has configured, labeled as the user's own wherever `found_on`
+   is shown. An own history relay can hold every version the user's other
+   relays replaced, so recovery works from the user's own device even when
+   no archival relay kept the history.
 2. For each relay, request `kinds: [K], authors: [pubkey]` with a per-relay
    timeout (reference: 6000 ms) and a limit of at least 50. Implementations
    MUST NOT treat a partial relay response as a complete history. Record
@@ -186,6 +203,17 @@ Implementations SHOULD NOT answer NIP-42 authentication challenges from
 those relays during a scan: authenticating proves to each of them that the
 account itself is asking. A relay that requires authentication then fails
 the request, and that is its outcome.
+
+An own history relay is the exception: it answers only the user, so
+implementations MAY answer its NIP-42 challenge with the user's signer,
+and only with the scanned account's key. Its events are untrusted like any
+relay's (step 3), and it ranks like any other source: being the user's own
+makes it a source, not a tiebreaker. An own history relay that the user's
+signer cannot authenticate to (a view-only account, a denied prompt) has
+failed, not answered (see Relay outcomes). Implementations MUST NOT publish
+or share the address of an own history relay as part of a scan or a
+recovery; the best-effort republish (see Recover) sends events to it, not
+its address anywhere.
 
 Informative: `wss://hist.nostr.land` and `wss://relay.ditto.pub` were
 observed keeping full replaceable history (hundreds of versions of one
@@ -369,11 +397,67 @@ certainties above, public tags plus private items, exact or estimated.
 An implementation that ships only the flagged tier for a kind known to
 carry private items is not conformant for that kind.
 
+### Merge
+
+A single candidate is often not the state the user wants back: a list
+clobbered twice, or edited between clobbers, can hold its items spread
+over several versions. Implementations MAY let the user merge two or more
+candidates with current into one item set and recover that. Merge applies
+to the list kinds in the registry. It MUST NOT be offered for kind 0,
+whose fields conflict rather than combine, or for `meaningful-empty`
+kinds, where the user chooses a state, not items.
+
+- **Choosing.** The user picks the candidates. Current is always part of
+  a merge, so a merge never drops what the user has now unless they
+  remove an item in the optional per-item review. Implementations MUST
+  NOT pre-select candidates beyond the recommended one, if any
+  (invariant 1). Empty candidates MUST NOT be pickable (invariant 3), and
+  neither may a candidate of unknown size (flagged, see Private items).
+- **Union.** The merged item set is every item of current, plus the items
+  of each picked candidate that the later-removals rule brings back, each
+  once, compared as the delta rule compares them. Of two forms of one item
+  (a different relay hint or petname), current's is kept; otherwise the
+  newest picked candidate's. Current's items keep their order, followed by
+  returning items, newest candidate first. Kind 3 keeps current's
+  `content`. On kind 10002, one relay URL that the versions mark
+  differently becomes one unmarked `r` tag, and the item says so.
+- **Summary, then one confirm.** Before the publish click, the
+  implementation MUST show a short summary: what each picked candidate
+  adds, the total change against current (see the delta rule), and how
+  many items the later-removals rule left out. One confirmation then
+  publishes the merged set, plus the separate confirmation the delta rule
+  requires for a shrinking recovery. Implementations need not list every
+  item. They MAY offer a per-item review in which the user adds or removes
+  single items, as long as it is optional and the summary is recomputed
+  from it.
+- **Later removals.** An item that is in a picked candidate but not in
+  current was dropped by some later version. Take the version right after
+  the newest candidate holding the item, among versions of known size.
+  If that step is a sudden drop (see Rank), the item was lost to a clobber
+  and SHOULD be brought back. Otherwise the user removed it in a normal
+  edit, and it MUST be left out by default: a deliberate unfollow or
+  unmute is not undone without the user asking. If the step cannot be
+  judged, the item SHOULD be left out.
+- **Private items.** An item private in current or in any picked candidate
+  MUST stay private in the merged set, even where another version listed it
+  publicly: a merge never publishes something the user once hid. The
+  merged private items are encrypted to the user with NIP-44. If current's
+  private items cannot be decrypted, a merge MUST NOT publish: it would
+  replace items no one has counted, and unlike a single-candidate restore
+  there is no verbatim `content` to carry over. A picked candidate whose
+  private items cannot be decrypted MUST NOT be merged, and the
+  implementation SHOULD say why.
+- **Result.** A merged set with no items MUST NOT be published. The total
+  delta (see the delta rule) decides the warnings and the shrink
+  confirmation; for kind 10000 it counts the accounts the merge would mute
+  again.
+
 ### Recover
 
 Publishing is: take the chosen candidate's item set verbatim (tags, and
-encrypted content if present and decryptable), construct a fresh event of
-the same kind, sign with the user's own signer, and publish.
+encrypted content if present and decryptable), or the merged item set
+(see Merge), construct a fresh event of the same kind, sign with the
+user's own signer, and publish.
 
 - Immediately before signing, implementations MUST re-read the current
   version, from their local copy and the user's write relays. The list has
@@ -382,7 +466,8 @@ the same kind, sign with the user's own signer, and publish.
   an older copy is not a change. If it changed (an edit from another view,
   device or client), the newer version becomes current: recompute the
   delta against it and ask again, since restoring over it would silently
-  drop those edits.
+  drop those edits. A merge is rebuilt with the newer version as its
+  current.
 - The re-read MUST get an answer from at least one of the user's write
   relays, and SHOULD wait for every write relay up to the timeout rather
   than stopping at the first answer. A relay that answers with no events
@@ -476,8 +561,14 @@ bundled). It exports:
 - `checkCurrent(reviewed, local, answers)` — pure: decides the pre-sign
   re-read from the local copy and each write relay's outcome and events
   (proceed, changed with the newer version, or unconfirmed).
+- `mergeCandidates(picked, current, candidates, profile)` — pure: returns
+  the merged item set, each item with its reason (current, lost to a
+  clobber) and the items left out (removed by the user, or not judged),
+  and the per-candidate deltas; `candidates` is every version found, so
+  later removals can be judged.
 - `buildRecoveryEvent(chosen, current)` — returns an unsigned event
-  template, dated after current.
+  template, dated after current; `chosen` is a candidate or a merged item
+  set.
 - Registry access: `getProfile(kind)` returns the ranking profile, tier,
   `meaningful-empty` flag, and required warnings, so clients never hardcode
   kind semantics. The core library hardcodes no kind numbers; the registry
@@ -485,8 +576,8 @@ bundled). It exports:
 - Adapter interfaces: `Signer` (NIP-07 / NIP-46 / secret-key agnostic),
   `RelayPool` (connect, query with timeout, publish; queries report each
   relay's outcome, never an empty result for a relay that failed or timed
-  out), `RelayCatalog` (user / default / archival sets). Anything a client
-  already has can be wrapped in a few lines.
+  out), `RelayCatalog` (user / default / archival / own history sets).
+  Anything a client already has can be wrapped in a few lines.
 - Test vectors as importable JSON, plus a `conformance()` helper that runs
   them: a client's adapters are conformant when `conformance()` passes
   against their `RelayPool` mock and the shared vectors.
@@ -510,6 +601,9 @@ A conformant client screen:
   direction-of-harm warning for kinds that affect other people.
 - Renders `meaningful-empty` kinds with the intent question and never
   pre-selects an option.
+- If it offers merge: shows a short summary (what each picked candidate
+  adds, the total change, how many removed items stay out) and one
+  confirm; a per-item review is optional.
 - Uses the signer for exactly one event per click.
 - Offers restore only to accounts that can sign: a view-only account can
   scan its history but not restore it.
@@ -564,7 +658,17 @@ A client or library is **Lazarus-compatible** if and only if:
      is unknown, not missing; and a scan no write relay answered
      recommends nothing;
    - pre-sign re-read fixtures: a newer version, an older copy, a
-     same-second version with a lower id, and no write relay answering.
+     same-second version with a lower id, and no write relay answering;
+   - if it offers merge, merge fixtures: duplicates across versions by
+     type and value, current's form kept, an item removed in a normal edit
+     (left out) and one lost to a sudden drop (brought back), an item
+     private in one version and public in another (stays private),
+     current's private items undecryptable (no publish), an empty
+     candidate (not pickable), and a merged set left with no items (no
+     publish);
+   - if it scans an own history relay, a fixture in which that relay
+     requires NIP-42 and answers only after authentication as the scanned
+     account, and fails when authentication is refused.
 3. It reports its relay configuration and each relay's outcome alongside
    recovery results, so a "nothing found" answer can be judged against the
    relays that actually answered.
@@ -611,6 +715,22 @@ publish on explicit click through the user's signer, republish widely.
 
 ## Changelog
 
+- 0.7.0-draft: merge and the user's own history relay, from the author's
+  request for merging versions and from building it in Nostr Vault, whose
+  own relay keeps past versions of the owner's lists. A recovery may now
+  merge two or more candidates with current into one item set: the union
+  by delta-rule identity, current's form of a duplicate kept, the delta as
+  a short summary per candidate and in total, then one confirm; a per-item
+  review is optional. An item a later normal edit removed stays out by
+  default; one lost to a sudden drop comes back. An item private anywhere
+  stays private, and a merge does not publish if current's private items
+  cannot be decrypted. Merge is not offered for kind 0 or
+  `meaningful-empty` kinds. An own history relay, which keeps superseded
+  versions and serves them only to the user after NIP-42, is part of the
+  scan's relay set, labeled as the user's own; scans may authenticate to
+  it, and to no other relay outside the user's list. The package contract
+  gains `mergeCandidates`, and conformance gains merge and
+  own-history-relay fixtures.
 - 0.6.2-draft: errata and agreement rules, after a fifth implementation,
   written from this text rather than ported from the reference code,
   estimated private items wrong. The NIP-44 estimate follows NIP-44's
