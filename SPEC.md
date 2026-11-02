@@ -139,7 +139,7 @@ no count shows, and it MUST take the separate confirmation a shrinking
 recovery takes. Two versions with identical `content` hold the same
 private items, counted or not.
 
-A merge (see Merge) MUST show the delta twice: per chosen candidate (what
+A merge (see Merge) MUST summarize the delta per chosen candidate (what
 that candidate adds over current) and in total (what the merged item set
 adds and removes against current, after any per-item changes). The total is
 the delta the rules above apply to: the direction-of-harm warning, the
@@ -715,22 +715,10 @@ publish on explicit click through the user's signer, republish widely.
 
 ## Changelog
 
-- 0.7.0-draft: merge and the user's own history relay, from the author's
-  request for merging versions and from building it in Nostr Vault, whose
-  own relay keeps past versions of the owner's lists. A recovery may now
-  merge two or more candidates with current into one item set: the union
-  by delta-rule identity, current's form of a duplicate kept, the delta as
-  a short summary per candidate and in total, then one confirm; a per-item
-  review is optional. An item a later normal edit removed stays out by
-  default; one lost to a sudden drop comes back. An item private anywhere
-  stays private, and a merge does not publish if current's private items
-  cannot be decrypted. Merge is not offered for kind 0 or
-  `meaningful-empty` kinds. An own history relay, which keeps superseded
-  versions and serves them only to the user after NIP-42, is part of the
-  scan's relay set, labeled as the user's own; scans may authenticate to
-  it, and to no other relay outside the user's list. The package contract
-  gains `mergeCandidates`, and conformance gains merge and
-  own-history-relay fixtures.
+- 0.7.0-draft: merge and the user's own history relay. A recovery may merge
+  two or more candidates with current, shown as a short summary and one confirm;
+  later removals stay out, private stays private. Adds an own history relay as a
+  scan source, `mergeCandidates`, and merge and own-relay fixtures.
 - 0.6.2-draft: errata and agreement rules, after a fifth implementation,
   written from this text rather than ported from the reference code,
   estimated private items wrong. The NIP-44 estimate follows NIP-44's
